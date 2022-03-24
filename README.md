@@ -6,6 +6,9 @@
 
 * Those who display common behavior will be in the same groups and feedback will be given to these groups in developing sales and marketing techniques specific to these groups.
 
+# Segments
+![Segments](https://user-images.githubusercontent.com/86803100/147666944-04dbdddd-a1cd-463e-8c33-cf36c9c96c1c.PNG)
+
 ## Project Steps
 
 1. Business Problem
