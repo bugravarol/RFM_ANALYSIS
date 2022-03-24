@@ -13,7 +13,6 @@ def outlier_thresholds(dataframe, variable):
     low_limit = quartile1 - 1.5 * interquantile_range
     return low_limit, up_limit
 
-
 def replace_with_thresholds(dataframe, variable):
     low_limit, up_limit = outlier_thresholds(dataframe, variable)
     dataframe.loc[(dataframe[variable] < low_limit), variable] = low_limit
