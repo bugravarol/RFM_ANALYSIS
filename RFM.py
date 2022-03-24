@@ -1,49 +1,65 @@
-# 1.Data Understanding
 import pandas as pd
 import datetime as dt
 pd.set_option('display.max_rows', 10)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.float_format', lambda x: '%.5f' % x)
+
+### Functions ###
+def outlier_thresholds(dataframe, variable):
+    quartile1 = dataframe[variable].quantile(0.01)
+    quartile3 = dataframe[variable].quantile(0.99)
+    interquantile_range = quartile3 - quartile1
+    up_limit = quartile3 + 1.5 * interquantile_range
+    low_limit = quartile1 - 1.5 * interquantile_range
+    return low_limit, up_limit
+
+
+def replace_with_thresholds(dataframe, variable):
+    low_limit, up_limit = outlier_thresholds(dataframe, variable)
+    dataframe.loc[(dataframe[variable] < low_limit), variable] = low_limit
+    dataframe.loc[(dataframe[variable] > up_limit), variable] = up_limit
+
+### EDA & PREP ###
 df_ = pd.read_excel("datasets/online_retail_II.xlsx",
                     sheet_name="Year 2010-2011")
-df = df_.copy()
-df.isnull().sum()
-df.groupby("Description").agg({"Quantity": "sum"}).sort_values("Quantity", ascending=False)
-df = df[~df["Invoice"].str.contains("C", na=False)]
-df["TotalPrice"] = df["Quantity"] * df["Price"]
-df.sort_values("Price", ascending=False)
-df.groupby("Country").agg({"TotalPrice": "sum"}).sort_values("TotalPrice", ascending=False)
 
-
-# 2.Data Preparation
+df= df_.copy()
+df.isnull().any()
 df.isnull().sum()
 df.dropna(inplace=True)
+df["Description"].nunique()
+df["Description"].value_counts()
+df.groupby("Description").agg({"Quantity": "sum"}).sort_values("Quantity", ascending=False).head()
+df = df[~df["Invoice"].str.contains("C", na=False)]
+df = df[(df['Quantity'] > 0)]
+df = df[(df['Price'] > 0)]
+replace_with_thresholds(df, 'Price')
+replace_with_thresholds(df, 'Quantity')
+
+df["TotalPrice"] = df["Quantity"]*df["Price"]
 df.describe([0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]).T
 
-
-# 3.Calculating RFM Metrics
+### RFM Metrics ###
 df["InvoiceDate"].max()
 
-today_date = dt.datetime(2011, 12, 10)
-
-rfm = df.groupby('Customer ID').agg({'InvoiceDate': lambda date: (today_date - date.max()).days,
-                                     'Invoice': lambda num: len(num),
-                                     'TotalPrice': lambda TotalPrice: TotalPrice.sum()})
-rfm.columns = ['Recency', 'Frequency', 'Monetary']
-rfm = rfm[(rfm["Monetary"] > 0) & (rfm["Frequency"] > 0)]
-
-
-# 4.Calculating RFM Scores
-rfm["RecencyScore"] = pd.qcut(rfm['Recency'], 5, labels=[5, 4, 3, 2, 1])
-rfm["FrequencyScore"] = pd.qcut(rfm['Frequency'], 5, labels=[1, 2, 3, 4, 5])
-rfm["MonetaryScore"] = pd.qcut(rfm['Monetary'], 5, labels=[1, 2, 3, 4, 5])
-
-rfm["RFM_SCORE"] = (rfm['RecencyScore'].astype(str) +
-                    rfm['FrequencyScore'].astype(str) +
-                    rfm['MonetaryScore'].astype(str))
+today_date = dt.datetime(2011, 12, 11)
+rfm = df.groupby('Customer ID').agg({'InvoiceDate': lambda InvoiceDate: (today_date - InvoiceDate.max()).days,
+                                     'Invoice': lambda Invoice: Invoice.nunique(),
+                                  'TotalPrice': lambda TotalPrice: TotalPrice.sum()})
+rfm.columns = ["recency", "frequency", "monetary"]
+rfm = rfm[(rfm["monetary"] > 0) & (rfm["frequency"] > 0)]
 
 
-# 5.Naming & Analysing RFM Segments
+### RFM Scores ###
+rfm["recency_score"] = pd.qcut(rfm['recency'], 5, labels=[5, 4, 3, 2, 1])
+rfm["frequency_score"] = pd.cut(rfm["frequency"].rank(method= "first"), 5 , labels=[1, 2, 3, 4, 5])
+rfm["monetary_score"] = pd.qcut(rfm['monetary'], 5, labels=[1, 2, 3, 4, 5])
+
+rfm["RFM_SCORE"] = (rfm['recency_score'].astype(str) +
+                    rfm['frequency_score'].astype(str))
+
+
+### RFM Segments ###
 seg_map = {
     r'[1-2][1-2]': 'Hibernating',
     r'[1-2][3-4]': 'At_Risk',
@@ -57,7 +73,5 @@ seg_map = {
     r'5[4-5]': 'Champions'
 }
 
-rfm['Segment'] = rfm['RecencyScore'].astype(str) + rfm['FrequencyScore'].astype(str)
-rfm['Segment'] = rfm['Segment'].replace(seg_map, regex=True)
-
-rfm[["Segment", "Recency", "Frequency", "Monetary"]].groupby("Segment").agg({"mean", "count"})
+rfm['segment'] = rfm['RFM_SCORE'].replace(seg_map, regex=True)
+rfm[["segment", "recency", "frequency", "monetary"]].groupby("segment").agg(["mean", "count"])
